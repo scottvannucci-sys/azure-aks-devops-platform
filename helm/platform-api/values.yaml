@@ -164,7 +164,3 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
-
-env:
-  - name: BUILD_VERSION
-    value: "{{ .Values.image.tag }}"

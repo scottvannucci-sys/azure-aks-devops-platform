@@ -44,6 +44,11 @@ spec:
             - name: http
               containerPort: {{ .Values.containerPort }}
               protocol: TCP
+
+          env:
+            - name: BUILD_VERSION
+              value: "{{ $.Values.image.tag }}"
+
           {{- with .Values.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
@@ -59,8 +64,6 @@ spec:
           {{- with .Values.volumeMounts }}
           volumeMounts:
               {{- toYaml . | nindent 12 }}
-          env:
-            {{- toYaml .Values.env | nindent 12 }}  
           {{- end }}
 
       {{- with .Values.volumes }}
