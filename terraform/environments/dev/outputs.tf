@@ -13,3 +13,7 @@ output "acr_name" {
 output "log_analytics_workspace" {
   value = azurerm_log_analytics_workspace.law.name
 }
+
+output "key_vault_name" {
+  value = azurerm_key_vault.kv.name
+}
