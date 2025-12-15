@@ -1,0 +1,111 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  - group: terraform-dev
+  - name: IMAGE_TAG
+    value: $(Build.BuildNumber)
+
+stages:
+- stage: BuildAndPush
+  displayName: Build & Push Image
+  jobs:
+  - job: Build
+    displayName: Docker Build & Push
+    steps:
+    - checkout: self
+
+    - bash: |
+        set -e
+        echo "Logging into Azure with service principal..."
+        az login --service-principal \
+          -u "$ARM_CLIENT_ID" \
+          -p "$ARM_CLIENT_SECRET" \
+          --tenant "$ARM_TENANT_ID" >/dev/null
+
+        az account set --subscription "$ARM_SUBSCRIPTION_ID"
+
+        echo "Getting ACR login server..."
+        ACR_LOGIN_SERVER=$(az acr show -n "$(ACR_NAME)" --query loginServer -o tsv)
+        echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER"
+
+        echo "Logging into ACR..."
+        az acr login -n "$(ACR_NAME)"
+
+        echo "Building docker image..."
+        docker build -t "$ACR_LOGIN_SERVER/$(IMAGE_NAME):$(IMAGE_TAG)" app/PlatformApi
+
+        echo "Pushing docker image..."
+        docker push "$ACR_LOGIN_SERVER/$(IMAGE_NAME):$(IMAGE_TAG)"
+
+        echo "$ACR_LOGIN_SERVER" > acr_login_server.txt
+      displayName: Build and Push
+      env:
+        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+
+    - publish: acr_login_server.txt
+      artifact: acrinfo
+      displayName: Publish ACR login server
+
+- stage: Deploy
+  displayName: Deploy to AKS
+  dependsOn: BuildAndPush
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToDev
+    environment: dev
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+
+          - download: current
+            artifact: acrinfo
+
+          - bash: |
+              set -e
+              ACR_LOGIN_SERVER=$(cat "$(Pipeline.Workspace)/acrinfo/acr_login_server.txt")
+              echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER"
+
+              echo "Logging into Azure with service principal..."
+              az login --service-principal \
+                -u "$ARM_CLIENT_ID" \
+                -p "$ARM_CLIENT_SECRET" \
+                --tenant "$ARM_TENANT_ID" >/dev/null
+
+              az account set --subscription "$ARM_SUBSCRIPTION_ID"
+
+              echo "Getting AKS credentials..."
+              az aks get-credentials -g "$(AKS_RG)" -n "$(AKS_NAME)" --overwrite-existing
+
+              echo "Deploying Helm release..."
+              helm upgrade --install "$(HELM_RELEASE)" helm/platform-api \
+                --namespace "$(HELM_NAMESPACE)" \
+                --create-namespace \
+                --set image.repository="$ACR_LOGIN_SERVER/$(IMAGE_NAME)" \
+                --set image.tag="$(IMAGE_TAG)" \
+                --set containerPort=8080 \
+                --set service.port=80
+
+              echo "Waiting for rollout..."
+              kubectl rollout status deploy/"$(HELM_RELEASE)" -n "$(HELM_NAMESPACE)" --timeout=180s
+
+              echo "Pods:"
+              kubectl get pods -n "$(HELM_NAMESPACE)"
+            displayName: Helm Deploy
+            env:
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
