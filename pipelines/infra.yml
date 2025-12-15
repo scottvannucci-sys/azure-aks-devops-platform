@@ -36,6 +36,11 @@ stages:
         terraform plan -out=tfplan
       workingDirectory: terraform/environments/dev
       displayName: Terraform Init/Plan
+      env:
+        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
 
     - publish: terraform/environments/dev/tfplan
       artifact: tfplan
@@ -70,3 +75,8 @@ stages:
               terraform apply -auto-approve tfplan
             workingDirectory: terraform/environments/dev
             displayName: Terraform Apply
+            env:
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
