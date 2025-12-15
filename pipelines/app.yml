@@ -95,6 +95,9 @@ stages:
                 --create-namespace \
                 --set image.repository="$ACR_LOGIN_SERVER/$(IMAGE_NAME)" \
                 --set image.tag="$(IMAGE_TAG)" \
+                --set workloadIdentity.clientId="$(WORKLOAD_IDENTITY_CLIENT_ID)" \
+                --set workloadIdentity.tenantId="$(ARM_TENANT_ID)" \
+                --set keyVault.name="$(KEY_VAULT_NAME)" \
                 --set containerPort=8080 \
                 --set service.port=80
 

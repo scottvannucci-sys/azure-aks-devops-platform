@@ -159,6 +159,14 @@ volumeMounts:
     mountPath: /mnt/secrets
     readOnly: true
 
+workloadIdentity:
+  clientId: ""
+  tenantId: ""
+
+keyVault:
+  name: ""
+
+
 nodeSelector: {}
 
 tolerations: []
