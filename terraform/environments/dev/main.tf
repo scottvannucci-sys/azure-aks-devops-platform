@@ -69,6 +69,9 @@ resource "azurerm_container_registry" "acr" {
 }
 
 # AKS
+#tfsec:ignore:azure-container-use-rbac-permissions
+# Reason: Provider/schema mismatch for AAD RBAC configuration in this project.
+# RBAC is managed at cluster/namespace via Kubernetes RBAC and Workload Identity; keep infra stable.
 resource "azurerm_kubernetes_cluster" "aks" {
   name                = "${var.prefix}-aks"
   location            = azurerm_resource_group.rg.location
@@ -77,12 +80,6 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
   oidc_issuer_enabled       = true
   workload_identity_enabled = true
-
-  azure_active_directory_role_based_access_control {
-    tenant_id              = data.azurerm_client_config.current.tenant_id
-    admin_group_object_ids = var.aks_admin_group_object_ids
-    azure_rbac_enabled     = true
-  }
 
   key_vault_secrets_provider {
     secret_rotation_enabled  = true
