@@ -28,9 +28,10 @@ resource "azurerm_key_vault" "kv" {
   resource_group_name         = azurerm_resource_group.rg.name
   tenant_id                   = data.azurerm_client_config.current.tenant_id
   sku_name                    = "standard"
-  purge_protection_enabled    = false
+  purge_protection_enabled    = true
   soft_delete_retention_days  = 7
   enable_rbac_authorization   = true
+  
 }
 
 
@@ -76,6 +77,10 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
   oidc_issuer_enabled       = true
   workload_identity_enabled = true
+
+  azure_active_directory_role_based_access_control {
+    azure_rbac_enabled = true
+  }
 
   key_vault_secrets_provider {
     secret_rotation_enabled  = true
