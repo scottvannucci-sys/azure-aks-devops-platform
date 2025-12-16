@@ -24,38 +24,53 @@ stages:
 
     - bash: |
         set -e
-        echo "Logging into Azure with service principal..."
-        az login --service-principal \
-          -u "$ARM_CLIENT_ID" \
-          -p "$ARM_CLIENT_SECRET" \
-          --tenant "$ARM_TENANT_ID" >/dev/null
-
+        az login --service-principal -u "$ARM_CLIENT_ID" -p "$ARM_CLIENT_SECRET" --tenant "$ARM_TENANT_ID" >/dev/null
         az account set --subscription "$ARM_SUBSCRIPTION_ID"
 
-        echo "Getting ACR login server..."
         ACR_LOGIN_SERVER=$(az acr show -n "$(ACR_NAME)" --query loginServer -o tsv)
         echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER"
-
-        echo "Logging into ACR..."
-        az acr login -n "$(ACR_NAME)"
-
-        echo "Building docker image..."
-        docker build -t "$ACR_LOGIN_SERVER/$(IMAGE_NAME):$(IMAGE_TAG)" app/PlatformApi
-
-        echo "Pushing docker image..."
-        docker push "$ACR_LOGIN_SERVER/$(IMAGE_NAME):$(IMAGE_TAG)"
-
-        echo "$ACR_LOGIN_SERVER" > acr_login_server.txt
-      displayName: Build and Push
+        echo "##vso[task.setvariable variable=ACR_LOGIN_SERVER]$ACR_LOGIN_SERVER"
+      displayName: "Auth: Azure login + resolve ACR"
       env:
         ARM_CLIENT_ID: $(ARM_CLIENT_ID)
         ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
         ARM_TENANT_ID: $(ARM_TENANT_ID)
         ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
 
-    - publish: acr_login_server.txt
-      artifact: acrinfo
-      displayName: Publish ACR login server
+    - bash: |
+        set -e
+        echo "Installing tfsec..."
+        curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+
+        echo "Running tfsec..."
+        tfsec terraform/environments/dev
+      displayName: "Security: tfsec (Terraform)"
+
+    - bash: |
+        set -e
+        docker build -t "$(ACR_LOGIN_SERVER)/$(IMAGE_NAME):$(IMAGE_TAG)" app/PlatformApi
+        docker tag "$(ACR_LOGIN_SERVER)/$(IMAGE_NAME):$(IMAGE_TAG)" "$(ACR_LOGIN_SERVER)/$(IMAGE_NAME):latest"
+      displayName: "Build: Docker build"
+
+    - bash: |
+        set -e
+        sudo apt-get update -y
+        sudo apt-get install -y wget gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/v2/public.key | sudo apt-key add -
+        echo "deb https://aquasecurity.github.io/trivy-repo/v2/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update -y
+        sudo apt-get install -y trivy
+
+        trivy image --severity HIGH,CRITICAL --exit-code 1 "$(ACR_LOGIN_SERVER)/$(IMAGE_NAME):$(IMAGE_TAG)"
+      displayName: "Security: Trivy image scan"
+
+    - bash: |
+        set -e
+        az acr login -n "$(ACR_NAME)"
+        docker push "$(ACR_LOGIN_SERVER)/$(IMAGE_NAME):$(IMAGE_TAG)"
+        docker push "$(ACR_LOGIN_SERVER)/$(IMAGE_NAME):latest"
+      displayName: "Push: Docker push to ACR"
+
 
 - stage: Deploy
   displayName: Deploy to AKS
@@ -70,13 +85,8 @@ stages:
           steps:
           - checkout: self
 
-          - download: current
-            artifact: acrinfo
-
           - bash: |
               set -e
-              ACR_LOGIN_SERVER=$(cat "$(Pipeline.Workspace)/acrinfo/acr_login_server.txt")
-              echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER"
 
               echo "Logging into Azure with service principal..."
               az login --service-principal \
@@ -85,6 +95,9 @@ stages:
                 --tenant "$ARM_TENANT_ID" >/dev/null
 
               az account set --subscription "$ARM_SUBSCRIPTION_ID"
+
+              ACR_LOGIN_SERVER=$(az acr show -n "$(ACR_NAME)" --query loginServer -o tsv)
+              echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER"              
 
               echo "Getting AKS credentials..."
               az aks get-credentials -g "$(AKS_RG)" -n "$(AKS_NAME)" --overwrite-existing
