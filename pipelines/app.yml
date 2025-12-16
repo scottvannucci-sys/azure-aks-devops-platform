@@ -160,6 +160,8 @@ stages:
               --set workloadIdentity.clientId="$(WORKLOAD_IDENTITY_CLIENT_ID)" \
               --set workloadIdentity.tenantId="$(ARM_TENANT_ID)" \
               --set keyVault.name="$(KEY_VAULT_NAME)" \
+              --set serviceAccount.create=true \
+              --set serviceAccount.name=platform-api-sa \
               --set containerPort=8080 \
               --set service.port=80
 
