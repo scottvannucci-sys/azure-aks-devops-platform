@@ -22,3 +22,9 @@ variable "node_vm_size" {
   type    = string
   default = "Standard_B2s"
 }
+
+variable "aks_admin_group_object_ids" {
+  type        = list(string)
+  description = "Azure AD group object IDs to be AKS cluster admins."
+  default     = []
+}
