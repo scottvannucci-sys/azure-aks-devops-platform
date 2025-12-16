@@ -121,3 +121,45 @@ stages:
               ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
               ARM_TENANT_ID: $(ARM_TENANT_ID)
               ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+
+
+  - deployment: DeployToProd
+    displayName: Deploy to AKS (Prod)
+    dependsOn: DeployToDev
+    environment: prod
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+
+          - bash: |
+              set -e
+              az login --service-principal \
+                -u "$ARM_CLIENT_ID" \
+                -p "$ARM_CLIENT_SECRET" \
+                --tenant "$ARM_TENANT_ID" >/dev/null
+
+              az account set --subscription "$ARM_SUBSCRIPTION_ID"
+
+              az aks get-credentials -g "$(AKS_RG)" -n "$(AKS_NAME)" --overwrite-existing
+
+              ACR_LOGIN_SERVER=$(az acr show -n "$(ACR_NAME)" --query loginServer -o tsv)
+
+              helm upgrade --install "$(HELM_RELEASE)" helm/platform-api \
+                --namespace platform-prod \
+                --create-namespace \
+                --set image.repository="$ACR_LOGIN_SERVER/$(IMAGE_NAME)" \
+                --set image.tag="$(IMAGE_TAG)" \
+                --set workloadIdentity.clientId="$(WORKLOAD_IDENTITY_CLIENT_ID)" \
+                --set workloadIdentity.tenantId="$(ARM_TENANT_ID)" \
+                --set keyVault.name="$(KEY_VAULT_NAME)" \
+                --set containerPort=8080 \
+                --set service.port=80
+
+              kubectl rollout status deploy/"$(HELM_RELEASE)" -n platform-prod --timeout=180s
+            env:
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
