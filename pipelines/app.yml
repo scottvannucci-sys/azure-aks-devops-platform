@@ -71,7 +71,7 @@ stages:
       displayName: "Push: Docker push to ACR"
 
 
-- stage: Deploy
+- stage: Deploy to Dev
   displayName: Deploy to AKS (Dev)
   dependsOn: BuildAndPush
   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
@@ -125,7 +125,7 @@ stages:
               ARM_TENANT_ID: $(ARM_TENANT_ID)
               ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
 
-- stage: Deploy
+- stage: Deploy to Prod
   displayName: Deploy to AKS (Prod)
   dependsOn: Deploy To Dev
   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
