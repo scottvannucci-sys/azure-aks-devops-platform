@@ -69,6 +69,10 @@ resource "azurerm_container_registry" "acr" {
 }
 
 # AKS
+#tfsec:ignore:azure-container-limit-authorized-ips
+# Reason: Dev/personal cluster. Microsoft-hosted agents have dynamic egress IPs; restricting would break CI/CD access.
+# Plan: When moving to prod-like setup, use private cluster or stable egress + authorized IP ranges.
+
 #tfsec:ignore:azure-container-use-rbac-permissions
 # Reason: Provider/schema mismatch for AAD RBAC configuration in this project.
 # RBAC is managed at cluster/namespace via Kubernetes RBAC and Workload Identity; keep infra stable.
@@ -80,6 +84,8 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
   oidc_issuer_enabled       = true
   workload_identity_enabled = true
+
+  role_based_access_control_enabled = true
 
   key_vault_secrets_provider {
     secret_rotation_enabled  = true
