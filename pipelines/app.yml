@@ -72,11 +72,11 @@ stages:
 
 
 - stage: Deploy
-  displayName: Deploy to AKS
+  displayName: Deploy to AKS (Dev)
   dependsOn: BuildAndPush
   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   jobs:
-  - deployment: DeployToDev
+  - deployment: Deploy To Dev
     environment: dev
     strategy:
       runOnce:
@@ -125,10 +125,12 @@ stages:
               ARM_TENANT_ID: $(ARM_TENANT_ID)
               ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
 
-
-  - deployment: DeployToProd
-    displayName: Deploy to AKS (Prod)
-    dependsOn: DeployToDev
+- stage: Deploy
+  displayName: Deploy to AKS (Prod)
+  dependsOn: Deploy To Dev
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: Deploy To Prod
     environment: prod
     strategy:
       runOnce:
