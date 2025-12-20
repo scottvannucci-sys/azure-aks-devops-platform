@@ -1,0 +1,74 @@
+trigger: none
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+# Reuse the same variable group(s) as infra.yml
+# Keep the names identical to whatever infra.yml already uses.
+variables:
+- group: terraform-dev   # <-- CHANGE to the exact variable group name from infra.yml
+
+- name: TF_WORKING_DIR
+  value: terraform/environments/dev
+
+stages:
+- stage: Destroy
+  displayName: Destroy (Terraform) - Dev
+  jobs:
+  - job: DestroyDev
+    displayName: Terraform destroy dev environment
+    steps:
+    - checkout: self
+
+    - bash: |
+        set -euo pipefail
+        echo "Logging into Azure with service principal..."
+        az login --service-principal \
+          -u "$ARM_CLIENT_ID" \
+          -p "$ARM_CLIENT_SECRET" \
+          --tenant "$ARM_TENANT_ID" >/dev/null
+
+        az account set --subscription "$ARM_SUBSCRIPTION_ID"
+        az account show -o table
+      displayName: "Auth: Azure login"
+      env:
+        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+
+    - bash: |
+        set -euo pipefail
+        cd "$(TF_WORKING_DIR)"
+
+        terraform --version
+
+        # Ensure backend uses the same config as infra.yml
+        terraform init -reconfigure
+
+        echo "Creating destroy plan..."
+        terraform plan -destroy -out=tfdestroyplan
+
+        echo "Destroy plan created."
+      displayName: "Terraform: init + plan -destroy"
+      env:
+        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+
+    - bash: |
+        set -euo pipefail
+        cd "$(TF_WORKING_DIR)"
+
+        echo "Applying destroy plan..."
+        terraform apply -auto-approve tfdestroyplan
+
+        echo "Destroy complete."
+      displayName: "Terraform: apply destroy"
+      env:
+        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
