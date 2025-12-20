@@ -1,74 +1,87 @@
 trigger: none
 pr: none
 
+variables:
+  - group: terraform-dev
+
 pool:
   vmImage: ubuntu-latest
 
-# Reuse the same variable group(s) as infra.yml
-# Keep the names identical to whatever infra.yml already uses.
-variables:
-- group: terraform-dev   # <-- CHANGE to the exact variable group name from infra.yml
-
-- name: TF_WORKING_DIR
-  value: terraform/environments/dev
-
 stages:
-- stage: Destroy
-  displayName: Destroy (Terraform) - Dev
+- stage: TerraformPlanDestroy
+  displayName: Terraform Plan (Destroy)
   jobs:
-  - job: DestroyDev
-    displayName: Terraform destroy dev environment
+  - job: PlanDestroy
+    displayName: Plan Destroy
     steps:
     - checkout: self
 
-    - bash: |
-        set -euo pipefail
-        echo "Logging into Azure with service principal..."
-        az login --service-principal \
-          -u "$ARM_CLIENT_ID" \
-          -p "$ARM_CLIENT_SECRET" \
-          --tenant "$ARM_TENANT_ID" >/dev/null
+    - task: TerraformInstaller@1
+      inputs:
+        terraformVersion: '1.6.6'
 
-        az account set --subscription "$ARM_SUBSCRIPTION_ID"
-        az account show -o table
-      displayName: "Auth: Azure login"
-      env:
-        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
-        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
-        ARM_TENANT_ID: $(ARM_TENANT_ID)
-        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-
-    - bash: |
-        set -euo pipefail
-        cd "$(TF_WORKING_DIR)"
-
-        terraform --version
-
-        # Ensure backend uses the same config as infra.yml
-        terraform init -reconfigure
-
-        echo "Creating destroy plan..."
+    - script: |
+        terraform init \
+          -backend-config="resource_group_name=$(TF_STATE_RG)" \
+          -backend-config="storage_account_name=$(TF_STATE_STORAGE)" \
+          -backend-config="container_name=$(TF_STATE_CONTAINER)" \
+          -backend-config="key=$(TF_STATE_KEY)"
+        terraform validate
         terraform plan -destroy -out=tfdestroyplan
-
-        echo "Destroy plan created."
-      displayName: "Terraform: init + plan -destroy"
+      workingDirectory: terraform/environments/dev
+      displayName: Terraform Init/Plan (Destroy)
       env:
         ARM_CLIENT_ID: $(ARM_CLIENT_ID)
         ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
-        ARM_TENANT_ID: $(ARM_TENANT_ID)
         ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-
-    - bash: |
-        set -euo pipefail
-        cd "$(TF_WORKING_DIR)"
-
-        echo "Applying destroy plan..."
-        terraform apply -auto-approve tfdestroyplan
-
-        echo "Destroy complete."
-      displayName: "Terraform: apply destroy"
-      env:
-        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
-        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
         ARM_TENANT_ID: $(ARM_TENANT_ID)
-        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+
+    - publish: terraform/environments/dev/tfdestroyplan
+      artifact: tfdestroyplan
+      displayName: Publish tfdestroyplan
+
+- stage: TerraformApplyDestroy
+  displayName: Terraform Destroy (Apply)
+  dependsOn: TerraformPlanDestroy
+  # Keep this gate if you only want destroy allowed from main
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: Destroy
+    environment: dev
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: '1.6.6'
+
+          - download: current
+            artifact: tfdestroyplan
+
+          - bash: |
+              echo "Pipeline.Workspace = $(Pipeline.Workspace)"
+              echo "Listing workspace:"
+              ls -la "$(Pipeline.Workspace)"
+              echo "Listing tfdestroyplan artifact folder:"
+              ls -la "$(Pipeline.Workspace)/tfdestroyplan"
+            displayName: Debug downloaded tfdestroyplan
+
+          - script: |
+              terraform init \
+                -reconfigure \
+                -backend-config="resource_group_name=$(TF_STATE_RG)" \
+                -backend-config="storage_account_name=$(TF_STATE_STORAGE)" \
+                -backend-config="container_name=$(TF_STATE_CONTAINER)" \
+                -backend-config="key=$(TF_STATE_KEY)"
+
+              terraform apply -auto-approve "$(Pipeline.Workspace)/tfdestroyplan/tfdestroyplan"
+            workingDirectory: terraform/environments/dev
+            displayName: Terraform Destroy (Apply)
+            env:
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
