@@ -35,23 +35,24 @@ stages:
         ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
         ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
         ARM_TENANT_ID: $(ARM_TENANT_ID)
-          - script: |
-              terraform init \
-                -reconfigure \
-                -backend-config="resource_group_name=$(TF_STATE_RG)" \
-                -backend-config="storage_account_name=$(TF_STATE_STORAGE)" \
-                -backend-config="container_name=$(TF_STATE_CONTAINER)" \
-                -backend-config="key=$(TF_STATE_KEY)"
+        
+    - script: |
+        terraform init \
+          -reconfigure \
+          -backend-config="resource_group_name=$(TF_STATE_RG)" \
+          -backend-config="storage_account_name=$(TF_STATE_STORAGE)" \
+          -backend-config="container_name=$(TF_STATE_CONTAINER)" \
+          -backend-config="key=$(TF_STATE_KEY)"
 
-              echo "Forcing unlock (safe only if no other TF run is active)..."
-              terraform force-unlock -force 695ce98c-ee4e-aa8c-11e3-dc28e185b201
-            workingDirectory: terraform/environments/dev
-            displayName: Terraform Init + Force Unlock
-            env:
-              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
-              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
-              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-              ARM_TENANT_ID: $(ARM_TENANT_ID)
+        echo "Forcing unlock (safe only if no other TF run is active)..."
+        terraform force-unlock -force 695ce98c-ee4e-aa8c-11e3-dc28e185b201
+      workingDirectory: terraform/environments/dev
+      displayName: Terraform Init + Force Unlock
+      env:
+        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
 
 
     - publish: terraform/environments/dev/tfdestroyplan
